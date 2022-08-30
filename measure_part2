@@ -1,0 +1,305 @@
+from scipy.spatial.distance import euclidean  # 用来计算端点之间的欧氏距离
+import numpy as np
+import imutils
+from scipy.spatial import distance as dist
+import time
+from imutils import contours
+from imutils import perspective
+import cv2
+from PIL import Image
+import matplotlib.pyplot as plt
+
+def inverse_color(edged):
+    height,width = edged.shape
+    img2 = edged.copy()
+    for i in range(height):
+        for j in range(width):
+            img2[i,j] = (255-edged[i,j])
+    return img2
+
+def get_points(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    throd, gray = cv2.threshold(gray, 120, 255, 0)
+
+    #gray = inverse_color(gray)
+    # plt.imshow(gray)
+    # plt.show()
+    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+
+
+    # perform edge detection, then perform a dilation + erosion to
+
+    # close gaps in between object edges
+
+    edged = cv2.Canny(gray, 30, 10)
+
+    # plt.imshow(edged)
+    # plt.show()
+
+    edged = cv2.dilate(edged, None, iterations=10)
+
+    edged = cv2.erode(edged, None, iterations=10)
+    # plt.imshow(edged)
+    # plt.show()
+
+    # find contours in the edge map
+
+    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    points = imutils.grab_contours(cnts)
+
+    # sort the contours from left-to-right and initialize the
+
+    # 'pixels per metric' calibration variable
+
+    (points, _) = contours.sort_contours(points)
+    return points
+
+def get_points1(image):
+    gray_image = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    gaussian_blur = cv2.GaussianBlur(gray_image, (5, 5), 0)
+    min_val, max_val = 30, 10
+    margin = cv2.Canny(gaussian_blur, min_val, max_val)
+    # plt.imshow(margin)
+    # plt.show()
+    open_margin = cv2.dilate(margin, None, iterations=15) # 开运算，如果有纯色平台iteration可以小一些
+    # plt.imshow(margin)
+    # plt.show()
+    contours = cv2.findContours(open_margin, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    points = imutils.grab_contours(contours)
+    #(points, _) = contours.sort_contours(points)
+    return points
+
+# def draw_frame(image, points, tag):
+#     if tag == 0:
+#         for point in points:
+#             min_area = cv2.minAreaRect(point)
+#             min_area_point = cv2.boxPoints(min_area)  # 获取最小外接矩阵的四个端点
+#             int_point = [min_area_point.astype('int')]
+#             cv2.drawContours(image, int_point, -1, (0, 0, 255), 1)
+#             return min_area_point
+#     else:
+#         for point in points:
+#             #print(point)
+#             min_area = cv2.minAreaRect(point)
+#             #print(min_area)
+#             min_area_point = cv2.boxPoints(min_area)
+#             #print(min_area_point)
+#             left_point, right_point = min_area_point[0], min_area_point[1]
+#             #print(left_point, right_point)
+#             #计算曲率
+#             length_euclidean = euclidean(left_point, right_point)  # 计算欧氏距离
+#             length_reference = int(82)
+#             # while True:
+#             #     try:
+#             #         length_reference = int(input('输入参照物长度(mm)：'))
+#             #     except ValueError:
+#             #         print('输入参数类型错误')
+#             #         continue
+#             #     else:
+#             #         if length_reference <= 0:
+#             #             print('参数不可小于或等于0')
+#             #             continue
+#             #         else:
+#             #             break
+#             rate = length_euclidean / length_reference  # 比率计算
+#             #print(rate)
+#
+#             X = left_point[0] + int(abs(right_point[0] - left_point[0]) / 2)  # 获取顶部中点X坐标
+#             Y = left_point[1] + int(abs(right_point[1] - left_point[1]) / 2)  # 获取顶部中点Y坐标
+#             int_point = [min_area_point.astype('int')]
+#             cv2.drawContours(image, int_point, -1, (0, 0, 255), 1)  # 绘制边框
+#
+#             radius = (euclidean(left_point, right_point) / 2) / rate  # 获取半径
+#             area = int((3.1415926 * pow(radius, 2)))
+#             print(area)
+#             # 展示面积信息
+#             img = cv2.putText(image, '{}'.format(area), (int(X), int(Y)), cv2.FONT_HERSHEY_SIMPLEX, 5, (0, 0, 255), 5)
+#         plt.imshow(img)
+#         plt.show()
+#
+# #rate基本是固定值，到时侯只需算出对应的点，乘上就可以
+# def rate_ca(points):
+#     min_area = cv2.minAreaRect(points[0])
+#     # print(min_area)
+#     min_area_point = cv2.boxPoints(min_area)
+#     print(min_area_point)
+#     left_point, right_point = min_area_point[0], min_area_point[1]
+#     # 计算曲率
+#     length_euclidean = euclidean(left_point, right_point)  # 计算欧氏距离
+#     length_reference = int(82)
+#     # while True:
+#     #     try:
+#     #         length_reference = int(input('输入参照物长度(mm)：'))
+#     #     except ValueError:
+#     #         print('输入参数类型错误')
+#     #         continue
+#     #     else:
+#     #         if length_reference <= 0:
+#     #             print('参数不可小于或等于0')
+#     #             continue
+#     #         else:
+#     #             break
+#     rate = length_euclidean / length_reference  # 比率计算
+#     print(rate)
+#     return rate
+#
+# def draw_frame_new(image, points, tag, rate):
+#     if tag == 0:
+#         min_area = cv2.minAreaRect(points[0])
+#         min_area_point = cv2.boxPoints(min_area)  # 获取最小外接矩阵的四个端点
+#         int_point = [min_area_point.astype('int')]
+#         cv2.drawContours(image, int_point, -1, (0, 0, 255), 1)
+#         return min_area_point
+#     else:
+#         min_area = cv2.minAreaRect(points[0])
+#         #print(min_area)
+#         min_area_point = cv2.boxPoints(min_area)
+#         left_point, right_point = min_area_point[0], min_area_point[1]
+#
+#         X = left_point[0] + int(abs(right_point[0] - left_point[0]) / 2)  # 获取顶部中点X坐标
+#         Y = left_point[1] + int(abs(right_point[1] - left_point[1]) / 2)  # 获取顶部中点Y坐标
+#         int_point = [min_area_point.astype('int')]
+#         cv2.drawContours(image, int_point, -1, (0, 0, 255), 1)  # 绘制边框
+#
+#         radius = (euclidean(left_point, right_point) / 2) / rate  # 获取半径
+#         area = int((3.1415926 * pow(radius, 2)))
+#         print(area)
+#         # 展示面积信息
+#         img = cv2.putText(image, '{}'.format(area), (int(X), int(Y)), cv2.FONT_HERSHEY_SIMPLEX, 5, (0, 0, 255), 5)
+#         plt.imshow(img)
+#         plt.show()
+
+#min_area_point = cv2.boxPoints(min_area)  # 获取最小外接矩阵的四个端点
+def midpoint(A, B):
+    return ((A[0] + B[0]) * 0.5, (A[1] + B[1]) * 0.5)
+
+image = cv2.imread('image/part2/553.jpg')#image/map/1.jpg
+point = get_points(image)
+
+
+pixelsPerMetric = 65.81848797893808#None
+
+width = 7.4827
+
+cen_x = []
+cen_y = []
+for c in point:
+
+    # if the contour is not sufficiently large, ignore it
+    # print(cv2.contourArea(c))
+    # if cv2.contourArea(c) < 100:
+    #     continue
+
+        # compute the rotated bounding box of the contour
+    M = cv2.moments(c)  # 计算第一条轮廓的各阶矩,字典形式
+    center_x = int(M["m10"] / M["m00"])
+    center_y = int(M["m01"] / M["m00"])
+    cen_x.append(center_x)
+    cen_y.append(center_y)
+    #print(cen_x, cen_y)
+
+    orig = image.copy()
+    #print(orig)
+    box = cv2.minAreaRect(c)
+
+    box = cv2.boxPoints(box)
+
+    box = np.array(box, dtype="int")#4个坐标
+
+
+    # order the points in the contour such that they appear
+
+    # in top-left, top-right, bottom-right, and bottom-left
+
+    # order, then draw the outline of the rotated bounding
+
+    # box
+
+    box = perspective.order_points(box)
+
+    cv2.drawContours(orig, [box.astype("int")], -1, (0, 255, 0), 2)
+
+    # loop over the original points and draw them
+
+    for (x, y) in box:
+        cv2.circle(orig, (int(x), int(y)), 5, (0, 0, 255), -1)
+    # unpack the ordered bounding box, then compute the midpoint
+
+    # between the top-left and top-right coordinates, followed by
+
+    # the midpoint between bottom-left and bottom-right coordinates
+
+    (tl, tr, br, bl) = box
+
+    (tltrX, tltrY) = midpoint(tl, tr)
+
+    (blbrX, blbrY) = midpoint(bl, br)
+
+    # compute the midpoint between the top-left and top-right points,
+
+    # followed by the midpoint between the top-righ and bottom-right
+
+    (tlblX, tlblY) = midpoint(tl, bl)
+
+    (trbrX, trbrY) = midpoint(tr, br)
+
+    # draw the midpoints on the image
+
+    cv2.circle(orig, (int(tltrX), int(tltrY)), 5, (255, 0, 0), -1)
+
+    cv2.circle(orig, (int(blbrX), int(blbrY)), 5, (255, 0, 0), -1)
+
+    cv2.circle(orig, (int(tlblX), int(tlblY)), 5, (255, 0, 0), -1)
+
+    cv2.circle(orig, (int(trbrX), int(trbrY)), 5, (255, 0, 0), -1)
+
+    # draw lines between the midpoints
+
+    cv2.line(orig, (int(tltrX), int(tltrY)), (int(blbrX), int(blbrY)), (255, 0, 255), 2)
+
+    cv2.line(orig, (int(tlblX), int(tlblY)), (int(trbrX), int(trbrY)), (255, 0, 255), 2)
+
+    # compute the Euclidean distance between the midpoints
+
+    dA = dist.euclidean((tltrX, tltrY), (blbrX, blbrY))
+
+    dB = dist.euclidean((tlblX, tlblY), (trbrX, trbrY))
+
+    # if the pixels per metric has not been initialized, then
+
+    # compute it as the ratio of pixels to supplied metric
+
+    # (in this case, inches)
+
+    if pixelsPerMetric is None:
+        pixelsPerMetric = dA / width#着在后面计算完成后就是一个固定值。
+    #print(pixelsPerMetric)
+    # compute the size of the object
+    dimA = dA / pixelsPerMetric
+    dimB = dB / pixelsPerMetric
+    print(dimA,dimB)
+
+    # draw the object sizes on the image
+
+    cv2.putText(orig, "{:.1f}mm".format(dimB),
+
+                (int(tltrX - 15), int(tltrY - 10)), cv2.FONT_HERSHEY_SIMPLEX, 5, (255, 0, 255), 5)
+
+    cv2.putText(orig, "{:.1f}mm".format(dimA),
+
+                (int(trbrX + 10), int(trbrY)), cv2.FONT_HERSHEY_SIMPLEX, 5, (255, 0, 255), 5)
+
+    # show the output image
+
+    #cv2.imshow("Image", orig)
+    plt.imshow(orig)
+    plt.show()
+
+    cv2.waitKey(0)
+#[687, 342, 2272, 2559] [22, 721, 448, 1011]
+left_point = [cen_x[1],cen_y[1]]
+
+right_point = [cen_x[2],cen_y[2]]
+length = euclidean(left_point, right_point) / pixelsPerMetric
+print(length)
