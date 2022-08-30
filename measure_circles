@@ -1,0 +1,56 @@
+from scipy.spatial.distance import euclidean  # 用来计算端点之间的欧氏距离
+import numpy as np
+import imutils
+from scipy.spatial import distance as dist
+import time
+from imutils import contours
+from imutils import perspective
+import cv2
+from PIL import Image
+import matplotlib.pyplot as plt
+
+
+pixelsPerMetric = 65.81848797893808#None
+img = 'image/part2/206.jpg'
+#img = 'image/part2/4.jpg'
+planets = cv2.imread(img)
+# plt.imshow(planets)
+# plt.show()
+
+# 转成灰度图片
+gray = cv2.cvtColor(planets, cv2.COLOR_BGR2GRAY)
+throd, gray = cv2.threshold(gray, 120, 255, 0)
+gray = cv2.GaussianBlur(gray, (7, 7), 0)
+edged = cv2.Canny(gray, 200, 100)
+# plt.imshow(edged)
+# plt.show()
+
+
+# 霍夫圆检测
+circle = cv2.HoughCircles(edged, cv2.HOUGH_GRADIENT, 1, 300, param1=100, param2=30, minRadius=48, maxRadius=150)# 204 48 175
+print(circle)#[2626.5 1800.5  358.1]  前两个是半径坐标  后一个是半径
+
+pixelsPerMetric = circle[0][1][2]*2/11.0642 # 13.832
+print(pixelsPerMetric)#14.98526807647709
+left_point = [circle[0][0][0],circle[0][0][1]]
+right_point = [circle[0][1][0],circle[0][1][1]]
+length = euclidean(left_point, right_point) / pixelsPerMetric
+print(length)
+
+circles = circle[0, :, :]
+circles = np.uint16(np.around(circles))
+# plt.imshow(circles)
+# plt.show()
+# 将检测到的圆圈标上去
+for i in circles[:]:  # 遍历矩阵每一行的数据
+    cv2.circle(planets, (i[0], i[1]), i[2], (0, 255, 0), 5)
+    cv2.circle(planets, (i[0], i[1]), 2, (0, 0, 255), 5)
+
+
+
+# 显示图像
+plt.imshow(planets)
+plt.show()
+# cv2.imshow()
+# cv2.waitKey(0)
+# cv2.destroyAllWindows()
