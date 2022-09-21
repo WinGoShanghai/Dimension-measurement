@@ -1,0 +1,282 @@
+from scipy.spatial.distance import euclidean  # 用来计算端点之间的欧氏距离
+import numpy as np
+import imutils
+from scipy.spatial import distance as dist
+import time
+import math
+from imutils import contours
+from imutils import perspective
+import cv2
+from PIL import Image
+import matplotlib.pyplot as plt
+
+# 定义了一个2维旋转矩阵
+def RotationMatrix2d(theta):
+    theta = theta * math.pi / 180.0
+    return np.array([[np.cos(theta), -np.sin(theta)], [np.sin(theta), np.cos(theta)]])
+
+def cropRectangularSectionFromImage1(image, x, y, theta, sourceDimw, sourceDimh, targetDimw, targetDimh, scale=1.0):
+    dst_points = np.array([[0, 0], [targetDimw, 0], [targetDimw, targetDimh], [0, targetDimh]])
+    # src_points这里除2看似有负数是为了方便能直接加上中心点坐标进行平移
+    src_points = np.array(
+        [[-sourceDimw / (2 * scale), -sourceDimh / (2 * scale)], [sourceDimw / (2 * scale), -sourceDimh / (2 * scale)],
+         [sourceDimw / (2 * scale), sourceDimh / (2 * scale)], [-sourceDimw / (2 * scale), sourceDimh / (2 * scale)]])
+    R = RotationMatrix2d(theta)
+
+    # rotate source points
+
+    src_points = np.matmul(R, src_points.T).T
+
+    # translate source points
+    # 至此要裁剪的区域就已经表示出来了
+    src_points = src_points + np.array([[x, y]])
+    # 计算单应矩阵再结合opencv就能很快的取出来目标区域了
+    h, _ = cv2.findHomography(src_points, dst_points)
+
+    cropped = cv2.warpPerspective(image, h, (targetDimw, targetDimh))
+
+    return cropped
+
+def get_points(image):
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    throd, gray = cv2.threshold(gray, 120, 255, 0)
+
+    #gray = inverse_color(gray)
+    # plt.imshow(gray)
+    # plt.show()
+    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+
+
+    # perform edge detection, then perform a dilation + erosion to
+
+    # close gaps in between object edges
+
+    edged = cv2.Canny(gray, 30, 10)
+
+    # plt.imshow(edged)
+    # plt.show()
+
+    edged = cv2.dilate(edged, None, iterations=10)
+
+    edged = cv2.erode(edged, None, iterations=10)
+
+    # plt.imshow(edged)
+    # plt.show()
+
+    # find contours in the edge map
+
+    cnts = cv2.findContours(edged.copy(), cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+
+    points = imutils.grab_contours(cnts)
+
+    # sort the contours from left-to-right and initialize the
+
+    # 'pixels per metric' calibration variable
+
+    (points, _) = contours.sort_contours(points)
+    return points
+
+def DetectEdgePoints(image_path, point_roi_row, point_roi_col, width_roi, height_roi, angle_roi, max_numble):
+    image = cv2.imread(image_path)
+
+    x = int(point_roi_row)#中心点横坐标
+    y = int(point_roi_col)#中心点纵坐标
+    height = int(height_roi)#ROI高度
+    width = int(width_roi)#ROI宽度
+    angle_roi = int(angle_roi)#ROI角度
+    max_numble = int(max_numble)#最大点的个数
+
+    anglePi = angle_roi * math.pi / 180.0
+    cosA = math.cos(anglePi)
+    sinA = math.sin(anglePi)
+
+    crop = cropRectangularSectionFromImage1(image, x, y, angle_roi, width, height, width, height)
+    # plt.imshow(crop)
+    # plt.show()
+
+    points = get_points(crop)
+
+
+    x_mid = width//2
+    y_mid = height//2
+
+    xx = []
+    yy = []
+
+    for i in range(len(points[0])):
+        x1 = x + (x_mid - points[0][i][0][0])
+
+        x2 = x1
+        y2 = y - (y_mid - points[0][i][0][1])
+
+        x2n = (x2 - x) * cosA - (y2 - y) * sinA + x
+        y2n = (x2 - x) * sinA + (y2 - y) * cosA + y
+        xx.append(x2n)
+        yy.append(y2n)
+
+    number = len(points[0])
+
+    # plt.imshow(image)
+    # plt.scatter(xx, yy, color='b')
+    # plt.show()
+
+    return number, np.array(xx), np.array(yy)
+
+#圆检测的参数
+def DetectCircles(image_path, point_roi_row, point_roi_col, width_roi, height_roi, angle_roi, max_numble):
+    image = cv2.imread(image_path)
+    # plt.imshow(image)
+    # plt.show()
+    #创建全黑二值图像
+    white_image = np.zeros([image.shape[1],image.shape[0]])
+
+    x = int(point_roi_row)#中心点横坐标
+    y = int(point_roi_col)#中心点纵坐标
+    height = int(height_roi)#ROI高度
+    width = int(width_roi)#ROI宽度
+    angle_roi = int(angle_roi)#ROI角度
+    max_numble = int(max_numble)#最大点的个数
+
+    anglePi = angle_roi * math.pi / 180.0
+    cosA = math.cos(anglePi)
+    sinA = math.sin(anglePi)
+
+    #裁剪出矩形ROI
+    crop = cropRectangularSectionFromImage1(image, x, y, angle_roi, width, height, width, height)
+    #找出边缘检测得出的所有点的坐标
+    gray = cv2.cvtColor(crop, cv2.COLOR_BGR2GRAY)
+    throd, gray = cv2.threshold(gray, 120, 255, 0)
+    gray = cv2.GaussianBlur(gray, (7, 7), 0)
+    edged = cv2.Canny(gray, 30, 10)
+    edged = cv2.dilate(edged, None, iterations=10)
+    edged = cv2.erode(edged, None, iterations=10)
+    # plt.imshow(edged)
+    # plt.show()
+
+    xx1 = []
+    yy1 = []
+
+    for i in range(len(edged)):
+        for j in range(len(edged[0])):
+            if edged[i][j] == 255:
+                yy1.append(i)
+                xx1.append(j)
+
+    # for i in range(len(xx1)):
+    #     print(xx1[i],yy1[i]) #177 0
+
+    # 将所有点的坐标映射到原有图像，得到x y的坐标点集
+    x_mid = width // 2
+    y_mid = height // 2
+
+    for i in range(len(xx1)):
+        x1 = x + (x_mid - xx1[i])
+
+        x2 = x1
+        y2 = y - (y_mid - yy1[i])
+
+        x2n = (x2 - x) * cosA - (y2 - y) * sinA + x
+        y2n = (x2 - x) * sinA + (y2 - y) * cosA + y
+        xx1[i] = x2n
+        yy1[i] = y2n
+
+    #将所得的点集用白色画到黑色图像上，形成二值图像
+    white_image = np.transpose(white_image)
+    white_image = white_image.astype('uint8')
+    for i in range(len(xx1)):
+        white_image[int(yy1[i])][int(xx1[i])] = 255
+
+    # plt.imshow(white_image)
+    # #plt.scatter(xx1, yy1, color='b')
+    # plt.show()
+
+    circle = cv2.HoughCircles(white_image, cv2.HOUGH_GRADIENT, 1, 10, param1=100, param2=9.4, minRadius=300, maxRadius=1000)
+    #print(circle,circle[0][0][0])  # [2626.5 1800.5  358.1]  前两个是半径坐标  后一个是半径
+
+    # circles = circle[0, :, :]
+    # circles = np.uint16(np.around(circles))
+    # # plt.imshow(circles)
+    # # plt.show()
+    # # 将检测到的圆圈标上去
+    # for i in circles[:]:  # 遍历矩阵每一行的数据
+    #     cv2.circle(image, (i[0], i[1]), i[2], (0, 255, 0), 5)
+    #     cv2.circle(image, (i[0], i[1]), 2, (0, 0, 255), 5)
+    # plt.imshow(image)
+    # plt.show()
+
+    return  circle[0][0][0], circle[0][0][1], circle[0][0][2]
+
+def GetMinDistancePP(pfRowArray, pfColArray, nArraySize, pfRowArray2, pfColArray2, nArraySize2):
+    mindistance = 0
+    # p1row = 0
+    # p1col = 0
+    # p2row = 0
+    # p2col = 0
+    for i in range(nArraySize):
+        for j in range(nArraySize2):
+            d = euclidean([pfRowArray[i],pfColArray[i]], [pfRowArray2[j],pfColArray2[j]])
+            if mindistance == 0 or d<=mindistance:
+                mindistance = d
+                p1row = pfRowArray[i]
+                p1col = pfColArray[i]
+                p2row = pfRowArray2[j]
+                p2col = pfColArray2[j]
+
+    return p1row, p1col, p2row, p2col, mindistance
+
+def GetMaxDistancePP(pfRowArray, pfColArray, nArraySize, pfRowArray2, pfColArray2, nArraySize2):
+    mindistance = 0
+    # p1row = 0
+    # p1col = 0
+    # p2row = 0
+    # p2col = 0
+    for i in range(nArraySize):
+        for j in range(nArraySize2):
+            d = euclidean([pfRowArray[i],pfColArray[i]], [pfRowArray2[j],pfColArray2[j]])
+            if mindistance == 0 or d>=mindistance:
+                mindistance = d
+                p1row = pfRowArray[i]
+                p1col = pfColArray[i]
+                p2row = pfRowArray2[j]
+                p2col = pfColArray2[j]
+
+    return p1row, p1col, p2row, p2col, mindistance
+
+def GetMinDistancePL(pfRowArray, pfColArray, nArraySize, fRowBegin, fColBegin, fRowEnd, fColEnd):
+    mindistance = 0
+    #生成线段
+    for i in range(nArraySize):
+        #求点到线的最小距离
+        d = euclidean([pfRowArray[i],pfColArray[i]])
+        if mindistance == 0 or d>=mindistance:
+            mindistance = d
+            p1row = pfRowArray[i]
+            p1col = pfColArray[i]
+
+    return p1row, p1col, mindistance
+
+def GetMsxDistancePL(pfRowArray, pfColArray, nArraySize, fRowBegin, fColBegin, fRowEnd, fColEnd):
+    mindistance = 0
+    # 生成线段
+    for i in range(nArraySize):
+        # 求点到线的最大距离
+        d = euclidean([pfRowArray[i], pfColArray[i]])
+        if mindistance == 0 or d >= mindistance:
+            mindistance = d
+            p1row = pfRowArray[i]
+            p1col = pfColArray[i]
+
+    return p1row, p1col, mindistance
+
+# def DetectCircle(pfRowArray, pfColArray, nArraySize):
+
+
+n, x, y = DetectCircles('image/part2/1.jpg', 2500, 2000, 500, 300, 30, 2000)
+
+pr = np.array([1,2,3,4])
+pc = np.array([1,2,3,4])
+pr2 = np.array([5,6,7,8,9])
+pc2 = np.array([5,6,7,8,9])
+
+p1r, p1c, p2r, p2c, dis = GetMaxDistancePP(pr, pc, 4, pr2, pc2, 5)
+print(p1r, p1c, p2r, p2c, dis)
